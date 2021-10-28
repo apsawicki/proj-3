@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="cc6263fd-5f8c-43b2-8f61-8675e7966b78" name="temple">
+        <fileTransfer rootFolder="/home/TU/tul69540" accessType="SFTP" host="cis-linux2.temple.edu" port="22" sshConfigId="ccbbd842-c9b6-4da5-9292-b33e4f7f595f" sshConfig="tul69540@cis-linux2.temple.edu:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" remoteFilesAllowedToDisappearOnAutoupload="false">
+    <serverData>
+      <paths name="WSL (f44ceda8-18ba-42ba-9f77-fa62320a3135)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="cis_3207/4_assignment" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="temple">
+        <serverdata>
+          <mappings>
+            <mapping deploy="cis_3207/4_assignment" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+  </component>
+</project>
