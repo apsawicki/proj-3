@@ -1,71 +1,45 @@
-#include<unistd.h>
+#include"main.h" // header file
+#include<unistd.h> // read and write to fd
+#include<string> // strings
+#include<pthread.h> // threads
+#include<string.h> // for bzero() to clean strings
+#include<arpa/inet.h> // for definitions like AF_INET, SOCK_STREAM etc...
+#include<queue> // for connections buffer priority queue
+#include<algorithm> // to help with removing whitespaces from a string
+#include<vector> // need vector for the connections buffer priority queue
+#include<chrono> // implementing time
 //#include<sys/socket.h>
 //#include<cstdlib>
 //#include<netinet/in.h>
-#include<iostream> //i/o
-#include<string> // strings
-#include<pthread.h> // threads
-#include <string.h> // for bzero()
-#include <arpa/inet.h>
-#define PORT 2348
+//#include<iostream> // I/O
+#define DEFAULT_PORT 2348
+#define DEFAULT_DICT user/share/dict/words
 using namespace std;
 
-pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER; // lock to make a critical section
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER; // queue for the threads to wait in
 
-int done = 0;
+// queue<CONNECTION> connectionsSequential; // if user wants sequential buffer
+priority_queue<CONNECTION, vector<CONNECTION>, my_compare> connectionsBuffer; // if user wants priority buffer
+queue<CONNECTION> loggerQueue;
 
-void chat(int client_fd){
-    pthread_mutex_lock(&mtx);
-    int maxCharCount = 80;
-    char buff[maxCharCount];
-    int n;
-    // infinite loop for chat
-    while (true){
-        bzero(buff, maxCharCount);
-
-        // read the message from client and copy it in buffer
-        read(client_fd, buff, sizeof(buff));
-        // print buffer which contains the client contents
-        printf("Received: %sSend: ", buff);
-        bzero(buff, maxCharCount);
-        n = 0;
-        // copy server message in the buffer
-        while ((buff[n++] = getchar()) != '\n')
-            ;
-
-        // and send that buffer to client
-        write(client_fd, buff, sizeof(buff));
-
-        // if msg contains "Exit" then server exit and chat ended.
-        if (strncmp("exit", buff, 4) == 0) {
-            printf("Server Exit...\n");
-            done = 1;
-            pthread_cond_signal(&cond);
-            break;
-        }
-    }
-
-    pthread_mutex_unlock(&mtx);
-}
-
-void *socketCreation(void *arg){
+bool sequentialBuffer; // lets the threads know whether the user chose sequential or priority buffer
+int connectionSize;
 
 
+[[noreturn]] void serverThreadFunc(){
 
     struct sockaddr_in serverAdd, clientAdd;
     int listen_socket, accept_socket;
 
 
-    if ((listen_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0){ // create the socket file descriptor
-        perror("socket failed");
-        exit(EXIT_FAILURE);
+    if ((listen_socket = socket(AF_INET, SOCK_STREAM, 0)) >= 0){ // create the socket file descriptor
+        printf("server socket created\n");
     }
     else{
-        printf("socket created\n");
+        perror("SOCKET CREATION FAILURE\n");
+        exit(EXIT_FAILURE);
     }
 
-    int opt = 1; // this if statement will prevent errors
+    int opt = 1; // TODO: I saw online that this was supposed to reduce/prevent binding errors, however I need to test it to make sure it is something useful/doesn't break my program
     if (setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))){
         perror("setsockopt");
         exit(EXIT_FAILURE);
@@ -80,118 +54,145 @@ void *socketCreation(void *arg){
     serverAdd.sin_port = htons(2348); // PORT 8080
 
 
-    if (bind(listen_socket, (struct sockaddr *)&serverAdd, sizeof(serverAdd)) != 0){ // Attaches socket to the port and address in sockaddr_in struct
-
-        // you cant bind if the address is already in use
-        perror("bind failed");
-        exit(EXIT_FAILURE);
+    if (bind(listen_socket, (struct sockaddr *)&serverAdd, sizeof(serverAdd)) == 0){ // Attaches socket to the port and address in sockaddr_in struct
+        printf("bind success\nPORT: %i\nIP: %s\n", DEFAULT_PORT, "localhost");
     }
     else{
-        printf("bind success\nPORT: %i\nIP: %s\n", PORT, "localhost");
-    }
-
-
-    if (listen(listen_socket, 5) < 0){ // puts the server socket in listen mode, waits for client to approach the server for a connection
-
-        perror("listen");
+        perror("BIND FAILURE\n");
         exit(EXIT_FAILURE);
     }
-    else{
-        printf("server listening\n");
+
+
+    if (listen(listen_socket, 5) == 0){ // puts the server socket in listen mode, waits for client to approach the server for a connection
+        printf("server listening\n\n");
     }
+    else{
+        perror("SERVER LISTEN FAILURE\n");
+        exit(EXIT_FAILURE);
+    }
+
 
     socklen_t len = sizeof(clientAdd);
-    accept_socket = accept(listen_socket, (struct sockaddr*)&clientAdd, &len);
-
-    while (accept_socket < 0){
+    while(true){ // the server will continuously wait for clients to connect and then add them to the queue
         accept_socket = accept(listen_socket, (struct sockaddr*)&clientAdd, &len);
+        if (accept_socket >= 0){
+            printf("client detected\n");
+
+            pthread_mutex_lock(&connectionMTX);
+            CONNECTION con{accept_socket, 0, 0, "", true, 0}; // TODO: requestArrivalTime for CONNECTION con
+
+            while(connectionsBuffer.size() == (unsigned int) connectionSize){
+                pthread_cond_wait(&emptySpace, &connectionMTX);
+            }
+
+            if (sequentialBuffer){
+                connectionsBuffer.push(con);
+            }
+            else{
+                con.priority = (rand() % 10) + 1;
+                connectionsBuffer.push(con);
+            }
+
+            printf("client accepted - fd: %i\n", accept_socket);
+
+            pthread_cond_signal(&nonEmptyQueue);
+            pthread_mutex_unlock(&connectionMTX);
+        }
+    }
+
+} // Main Server Thread (Producer) - doesn't need locking mechanisms since it is the only thread that will produce for it's consumers
+
+[[noreturn]] void *loggerThreadFunc(void *arg){
+    // TODO: take logs from the log buffer: The log buffer entry is to contain the arrival time of the request, the time the spell check was completed, the word checked, the result of the spell check and the priority of the request.
+    // TODO: and send them to a log file
+    while (true){
 
     }
-    printf("client accepted - client_fd: %i\n", accept_socket);
-
-//    if (accept_socket < 0){
-//        printf("client accept failure\n");
-//        exit(EXIT_FAILURE);
-//    }
-//    else{
-//        printf("client accepted - client_fd: %i\n", accept_socket);
-//    }
-
-
-    chat(accept_socket);
-
-
     return nullptr;
 }
 
-void *workerThreads(void *arg){
+[[noreturn]] void *workerThreadFunc(void *arg){
+    while (true){
 
-//    printf("workerThread");
-//    struct sockaddr_in serv_addr;
-//    string hello = "Hello from client";
-//    char buffer[1024];
-//
-//    int sock = 0;
-//    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-//    {
-//        printf("\n Socket creation error \n");
-//        return nullptr;
-//    }
-//
-//    serv_addr.sin_family = AF_INET;
-//    serv_addr.sin_port = htons( 8080 );
-//
-//    // Convert IPv4 and IPv6 addresses from text to binary form
-//    if(inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr)<=0)
-//    {
-//        printf("\nInvalid address/ Address not supported \n");
-//        return nullptr;
-//    }
-//
-//    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-//    {
-//        printf("\nConnection Failed \n");
-//        return nullptr;
-//    }
-//    int valread;
-//    send(sock , hello.c_str() , hello.size() , 0 );
-//    printf("Hello message sent\n");
-//    valread = read( sock , buffer, 1024);
-//    printf("%s\n",buffer );
-//    printf("valread: %d", valread);
+        CONNECTION client;
+        int client_fd = client.clientFD;
+        char buff[80]; // message maximum length is 80
+        string serverMessage;
 
+
+        pthread_mutex_lock(&connectionMTX);
+
+        while (connectionsBuffer.empty()){
+            pthread_cond_wait(&nonEmptyQueue, &connectionMTX); // wait until the connection queue has something in it and then we will start working
+        }
+
+        client = connectionsBuffer.top();
+        connectionsBuffer.pop();
+
+        pthread_cond_signal(&emptySpace);
+        pthread_mutex_unlock(&connectionMTX);
+
+
+
+        // read client message
+        read(client_fd, buff, sizeof(buff));
+        serverMessage = string(buff);
+        serverMessage.erase(remove(serverMessage.begin(), serverMessage.end(), ' '), serverMessage.end()); // should remove all whitespace from the string
+        bzero(buff, 80);
+
+        printf("Client: %i : (%s)\n", client_fd, serverMessage.c_str());
+        // if client message is exit then disconnect from the client
+//        if (serverMessage == "exit"){
+//            printf("Client: %i - exit\n", client_fd);
+//            printf("closing communications with client_fd: %i\n", client_fd);
+//            string goodbye = "closing communications with server\n";
+//            write(client_fd, goodbye.c_str(), sizeof(goodbye.c_str()));
+//            close(client_fd);
+//            break; // will break and wait for the next
+//        }
+
+        // TODO: check dictionary if it is a correctly spelled word
+        // TODO: add log to the logger queue
+
+        // write spell checked word to client
+        write(client_fd, serverMessage.c_str(), sizeof(serverMessage.c_str()));
+
+    }
     return nullptr;
-}
+} // Worker Threads (Consumer)
 
-void spawnThreads(){
+void spawnThreads(int workerThreadCount){
 
-    pthread_t socketThread;
-
-    if(pthread_create(&socketThread, nullptr, socketCreation, nullptr) != 0){
-        printf("Error: failed to create client socket thread\n");
-        exit(1);
+    // create logger thread
+    pthread_t loggerThread;
+    if(pthread_create(&loggerThread, nullptr, loggerThreadFunc, nullptr) != 0){
+        printf("Error: failed to create logger thread\n");
+        exit(EXIT_FAILURE);
     }
 
-    while (done == 0){
-
-        pthread_cond_wait(&cond, &mtx);
+    // create worker threads
+    pthread_t workerThreads[workerThreadCount];
+    for (int i = 0; i < workerThreadCount; i++){
+        if (pthread_create(&workerThreads[i], nullptr, workerThreadFunc, nullptr) != 0){
+            printf("Error: failed to create worker thread\n");
+            exit(EXIT_FAILURE);
+        }
     }
-
-//    pthread_t clientThread;
-//
-//    if(pthread_create(&clientThread, nullptr, workerThreads, nullptr) != 0){
-//        printf("Error: failed to create worker client thread\n");
-//        exit(1);
-//    }
-}
+} // Creates the worker and logger threads
 
 
+int main(int argc, char** argv){
 
-int main(){
+    // TODO: implement chrono time for log info, add log into the log queue
+    srand(0); // TODO: seed this in respect to time
+    // these values are going to be set by the user through the argv[] arguments
+    sequentialBuffer = true; // using either the sequential or priority queue
+    connectionSize = 10; // total connections allowed
+    int workerThreadCount = 10; // total worker threads allowed
 
-    spawnThreads();
 
-
+    spawnThreads(workerThreadCount); // spawns worker + log threads
+    serverThreadFunc(); // server thread starts
 
 
     return 0;

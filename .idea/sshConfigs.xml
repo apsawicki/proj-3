@@ -2,7 +2,7 @@
 <project version="4">
   <component name="SshConfigs">
     <configs>
-      <sshConfig authType="PASSWORD" host="cis-linux2.temple.edu" id="ccbbd842-c9b6-4da5-9292-b33e4f7f595f" port="22" nameFormat="DESCRIPTIVE" username="tul69540" />
+      <sshConfig authType="PASSWORD" connectionConfig="{&quot;serverAliveInterval&quot;:300}" host="cis-linux2.temple.edu" id="ccbbd842-c9b6-4da5-9292-b33e4f7f595f" port="22" nameFormat="DESCRIPTIVE" username="tul69540" />
     </configs>
   </component>
 </project>
